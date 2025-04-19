@@ -36,7 +36,7 @@ def welcome(update, context):
         )
 
 def main():
-    updater = Updater(os.getenv('7826072060:AAHKGnuJo-jq4tah7Le5q04rHwvFJv9h_iw'), use_context=True)
+    updater = Updater(os.getenv('7510443006:AAFbKeOonsOtZCdypk7oxiL5ym7z1lu2UCY'), use_context=True)
     dp = updater.dispatcher
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, welcome))
     updater.start_polling()
