@@ -5,6 +5,9 @@ import logging
 from datetime import datetime
 
 load_dotenv()
+TOKEN = os.getenv("7510443006:AAFbKeOonsOtZCdypk7oxiL5ym7z1lu2UCY")
+
+bot = telebot.TeleBot(TOKEN)
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,7 +39,7 @@ def welcome(update, context):
         )
 
 def main():
-    updater = Updater(os.getenv('7510443006:AAFbKeOonsOtZCdypk7oxiL5ym7z1lu2UCY'), use_context=True)
+    updater = Updater(os.getenv('bot'), use_context=True)
     dp = updater.dispatcher
     dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, welcome))
     updater.start_polling()
