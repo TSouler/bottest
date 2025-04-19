@@ -1,49 +1,51 @@
-﻿from telegram.ext import Updater, MessageHandler, Filters
-from dotenv import load_dotenv
 import os
-import logging
-from datetime import datetime
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from dotenv import load_dotenv
 
+# Загрузка переменных окружения
 load_dotenv()
-TOKEN = os.getenv("7510443006:AAFbKeOonsOtZCdypk7oxiL5ym7z1lu2UCY")
 
-bot = telebot.TeleBot(TOKEN)
+TOKEN = os.getenv('BOT_TOKEN')
+VK_LINK = os.getenv('VK_GROUP_LINK')
+TG_LINK = os.getenv('TG_CHANNEL_LINK')
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+async def start(update: Update, context):
+    user = update.effective_user
+    welcome_text = (
+        f"Привет, {user.first_name}! 👋\n\n"
+        "Мы рады видеть тебя здесь!\n\n"
+        f"Присоединяйся к нашим сообществам:\n"
+        f"🔹 ВКонтакте: {VK_LINK}\n"
+        f"🔹 Telegram: {TG_LINK}\n\n"
+        "У нас регулярно проходят крутые розыгрыши! 🎁"
+    )
+    
+    await update.message.reply_text(welcome_text)
 
-def get_greeting():
-    hour = datetime.now().hour
-    if 5 <= hour < 12: return "Доброе утро"
-    elif 12 <= hour < 18: return "Добрый день"
-    elif 18 <= hour < 23: return "Добрый вечер"
-    else: return "Доброй ночи"
-
-def welcome(update, context):
+async def handle_new_members(update: Update, context):
     for member in update.message.new_chat_members:
-        greeting = f"{get_greeting()}, {member.mention_markdown()}!"
-        message = f"""{greeting} 🎉
-
-Добро пожаловать в наш канал!
-
-📢 Присоединяйтесь к нашим сообществам:
-- Telegram: {os.getenv('https://t.me/+n6v4XX-xFig5NDcy')}
-- ВКонтакте: {os.getenv('https://vk.com/sevgarant')}
-
-🎁 У нас регулярно проходят розыгрыши и конкурсы!"""
-        
-        context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=message,
-            parse_mode='Markdown'
+        welcome_text = (
+            f"Добро пожаловать, {member.first_name}! 🎉\n\n"
+            "Мы очень рады видеть тебя в нашем чате!\n"
+            f"Не забудь подписаться на наши ресурсы:\n"
+            f"🔹 ВКонтакте: {VK_LINK}\n"
+            f"🔹 Telegram: {TG_LINK}\n\n"
+            "Там мы проводим розыгрыши призов! 🚀"
         )
+        await update.message.reply_text(welcome_text)
 
 def main():
-    updater = Updater(os.getenv('bot'), use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(MessageHandler(Filters.status_update.new_chat_members, welcome))
-    updater.start_polling()
-    updater.idle()
+    app = Application.builder().token(TOKEN).build()
+    
+    # Обработчики команд
+    app.add_handler(CommandHandler("start", start))
+    
+    # Приветствие новых участников
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_members))
+    
+    # Запуск бота
+    app.run_polling()
 
 if __name__ == '__main__':
     main()
