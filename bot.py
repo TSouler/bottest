@@ -203,7 +203,7 @@ def main():
         # Создаем приложение с работающим JobQueue
         app = Application.builder() \
             .token(BOT_TOKEN) \
-            .job_queue(None) \  # Это включит JobQueue
+            .job_queue(None) \  
             .build()
         
         app.bot_data['conn'] = conn
