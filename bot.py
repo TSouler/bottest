@@ -84,6 +84,14 @@ async def send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
         
         try:
+            # Формируем информацию о пригласившем
+            inviter_info = ""
+            if inviter:
+                if inviter.username:
+                    inviter_info = f"📢 Тебя пригласил: @{inviter.username}\n\n"
+                else:
+                    inviter_info = f"📢 Тебя пригласил: {inviter.first_name}\n\n"
+            
             welcome_text = (
                 f"👋 Привет, {member.first_name}!\n\n"
                 "Добро пожаловать в наше сообщество!\n\n"
@@ -91,11 +99,10 @@ async def send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "1. Напиши /start для регистрации\n"
                 "2. Приглашай друзей\n"
                 "3. Получай баллы за каждого друга\n\n"
-                f"📢 Тебя пригласил: @{inviter.username}\n\n" if inviter else ""
+                f"{inviter_info}"
                 "🏆 Топ участников: /top\n"
                 "ℹ️ Подробнее: /info"
             )
-            # Отправляем в чат вместо личного сообщения
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=welcome_text,
