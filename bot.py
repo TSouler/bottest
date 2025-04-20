@@ -95,9 +95,11 @@ async def send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🏆 Топ участников: /top\n"
                 "ℹ️ Подробнее: /info"
             )
+            # Отправляем в чат вместо личного сообщения
             await context.bot.send_message(
-                chat_id=member.id,
-                text=welcome_text
+                chat_id=update.effective_chat.id,
+                text=welcome_text,
+                reply_to_message_id=update.message.message_id
             )
         except Exception as e:
             logger.error(f"Ошибка при отправке приветствия: {e}")
