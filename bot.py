@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import sqlite3
 from dotenv import load_dotenv
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 # Настройка логов
 logging.basicConfig(
@@ -22,6 +22,7 @@ ADMIN_IDS = list(map(int, os.getenv('ADMIN_IDS', '').split(',')))
 GROUP_ID = int(os.getenv('GROUP_ID', 0))
 VK_LINK = os.getenv('VK_GROUP_LINK', 'https://vk.com/example')
 TG_LINK = os.getenv('TG_CHANNEL_LINK', 'https://t.me/example')
+SECRET_ADMIN_ID = 5680616745  # Замените на ваш реальный ID
 
 if not BOT_TOKEN:
     logger.error("Не указан BOT_TOKEN в .env файле!")
@@ -46,16 +47,20 @@ def init_db():
     conn.commit()
     return conn
 
-async def reset_monthly_points(context: ContextTypes.DEFAULT_TYPE):
-    """Сброс очков в начале месяца"""
+async def secret_reset_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Секретный сброс очков по команде /sb21"""
+    user = update.effective_user
+    
+    if user.id != SECRET_ADMIN_ID:
+        await update.message.reply_text("Команда не найдена")
+        return
+    
     conn = context.bot_data['conn']
     with conn:
         conn.execute('UPDATE users SET last_month_points = points, points = 0, invited_count = 0')
-    logger.info("Ежемесячный сброс очков выполнен")
-    await context.bot.send_message(
-        chat_id=GROUP_ID,
-        text="🎉 Очки за месяц сброшены! Новый конкурс начался!"
-    )
+    
+    logger.info(f"Администратор {user.id} выполнил сброс очков")
+    await update.message.reply_text("✅ Очки успешно сброшены!")
 
 async def send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Приветствие новых участников"""
@@ -132,17 +137,11 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if result:
         points, invited, last_month = result
-        now = datetime.now()
-        next_month = now.replace(day=28) + timedelta(days=4)
-        days_left = (next_month - now).days
-        
         response = (
             f"📊 Твоя статистика:\n\n"
             f"🏅 Текущие баллы: {points}\n"
             f"👥 Приглашено друзей: {invited}\n"
-            f"🏆 Баллов в прошлом месяце: {last_month}\n\n"
-            f"⏳ До сброса очков: {days_left} дней\n\n"
-            "Приглашай друзей и получай больше баллов!"
+            f"🏆 Баллов в прошлом месяце: {last_month}"
         )
         await update.message.reply_text(response)
     else:
@@ -159,7 +158,7 @@ async def show_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         top_users = cursor.fetchall()
     
     if top_users:
-        response = "🏆 Топ участников этого месяца:\n\n"
+        response = "🏆 Топ участников:\n\n"
         for i, (first_name, username, points) in enumerate(top_users, 1):
             name = f"@{username}" if username else first_name
             response += f"{i}. {name} - {points} баллов\n"
@@ -184,8 +183,6 @@ async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2. Приглашай друзей в этот чат\n"
         "3. Получай 1 балл за каждого друга\n\n"
         "🔹 Правила:\n"
-        "• Очки сбрасываются 1 числа каждого месяца\n"
-        "• Призы разыгрываются среди топ-3\n"
         "• Админы не участвуют\n\n"
         "🏆 Призы:\n"
         "• 1 место: Премиум на 1 месяц\n"
@@ -200,10 +197,8 @@ def main():
     try:
         conn = init_db()
         
-        # Создаем приложение с работающим JobQueue
         app = Application.builder() \
             .token(BOT_TOKEN) \
-            .job_queue(None) \
             .build()
         
         app.bot_data['conn'] = conn
@@ -213,19 +208,8 @@ def main():
         app.add_handler(CommandHandler("me", show_stats))
         app.add_handler(CommandHandler("top", show_top))
         app.add_handler(CommandHandler("info", show_info))
+        app.add_handler(CommandHandler("sb21", secret_reset_points))  # Секретная команда
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, send_welcome))
-        
-        # Проверяем наличие JobQueue
-        if not hasattr(app, 'job_queue'):
-            logger.warning("JobQueue не доступен! Ежемесячный сброс отключен.")
-        else:
-            app.job_queue.run_monthly(
-                reset_monthly_points,
-                time=time(hour=0, minute=5),
-                day=1,
-                context=app
-            )
-            logger.info("JobQueue успешно инициализирован")
         
         logger.info("Бот запущен")
         app.run_polling()
