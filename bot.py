@@ -1,7 +1,14 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+    JobQueue
+)
 import sqlite3
 from dotenv import load_dotenv
 from datetime import datetime, time, timedelta
@@ -66,39 +73,26 @@ async def send_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
         inviter = update.message.from_user
         conn = context.bot_data['conn']
         
-        # Добавляем пользователя в БД
         with conn:
             conn.execute(
                 'INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)',
                 (member.id, member.username, member.first_name)
             )
             
-            # Начисляем баллы пригласившему
             if inviter and inviter.id != member.id and inviter.id not in ADMIN_IDS:
                 conn.execute(
                     'UPDATE users SET points = points + 1, invited_count = invited_count + 1 WHERE user_id = ?',
                     (inviter.id,)
                 )
         
-        # Отправляем приветственное сообщение
         try:
-            welcome_text = (
-                f"👋 Привет, {member.first_name}!\n\n"
-                "Добро пожаловать в наше сообщество!\n\n"
-                "🎁 У нас проходит реферальный конкурс:\n"
-                "1. Напиши /start для регистрации\n"
-                "2. Приглашай друзей\n"
-                "3. Получай баллы за каждого друга\n\n"
-                f"📢 Тебя пригласил: @{inviter.username}\n\n" if inviter else ""
-                "🏆 Топ участников: /top\n"
-                "ℹ️ Подробнее: /info"
-            )
             await context.bot.send_message(
                 chat_id=member.id,
-                text=welcome_text
+                text=f"👋 Привет, {member.first_name}!\n\n"
+                     "Добро пожаловать! Напиши /start для участия в конкурсе!"
             )
         except Exception as e:
-            logger.error(f"Ошибка при отправке приветствия: {e}")
+            logger.error(f"Ошибка приветствия: {e}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка команды /start"""
@@ -113,12 +107,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "✅ Ты зарегистрирован в конкурсе!\n\n"
-        "Теперь ты можешь:\n"
-        "• Приглашать друзей в чат\n"
-        "• Получать 1 балл за каждого друга\n"
-        "• Следить за своим прогрессом (/me)\n\n"
-        "🏆 Топ участников: /top\n"
-        "ℹ️ Правила конкурса: /info"
+        "Приглашай друзей и получай баллы!\n"
+        "Твоя статистика: /me\n"
+        "Топ участников: /top\n"
+        "Правила: /info"
     )
 
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -139,17 +131,15 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         next_month = now.replace(day=28) + timedelta(days=4)
         days_left = (next_month - now).days
         
-        response = (
+        await update.message.reply_text(
             f"📊 Твоя статистика:\n\n"
-            f"🏅 Текущие баллы: {points}\n"
-            f"👥 Приглашено друзей: {invited}\n"
-            f"🏆 Баллов в прошлом месяце: {last_month}\n\n"
-            f"⏳ До сброса очков: {days_left} дней\n\n"
-            "Приглашай друзей и получай больше баллов!"
+            f"🏅 Баллы: {points}\n"
+            f"👥 Приглашено: {invited}\n"
+            f"🏆 Прошлый месяц: {last_month}\n\n"
+            f"⏳ До сброса: {days_left} дней"
         )
-        await update.message.reply_text(response)
     else:
-        await update.message.reply_text("Ты не зарегистрирован. Напиши /start")
+        await update.message.reply_text("Напиши /start для регистрации")
 
 async def show_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает топ участников (/top)"""
@@ -162,75 +152,58 @@ async def show_top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         top_users = cursor.fetchall()
     
     if top_users:
-        response = "🏆 Топ участников этого месяца:\n\n"
+        response = "🏆 Топ участников:\n\n"
         for i, (first_name, username, points) in enumerate(top_users, 1):
             name = f"@{username}" if username else first_name
             response += f"{i}. {name} - {points} баллов\n"
         
-        response += (
-            "\n🎁 Призы:\n"
-            "🥇 1 место: Премиум-статус\n"
-            "🥈 2 место: 500 рублей\n"
-            "🥉 3 место: Стикерпак\n\n"
-            "ℹ️ Подробнее: /info"
-        )
         await update.message.reply_text(response)
     else:
-        await update.message.reply_text("Пока нет данных для топа")
+        await update.message.reply_text("Пока нет данных")
 
 async def show_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает информацию о конкурсе (/info)"""
-    info_text = (
-        "🎁 Реферальный конкурс 🎁\n\n"
-        "🔹 Как участвовать:\n"
-        "1. Напиши /start\n"
-        "2. Приглашай друзей в этот чат\n"
-        "3. Получай 1 балл за каждого друга\n\n"
-        "🔹 Правила:\n"
-        "• Очки сбрасываются 1 числа каждого месяца\n"
-        "• Призы разыгрываются среди топ-3\n"
-        "• Админы не участвуют\n\n"
-        "🏆 Призы:\n"
-        "• 1 место: Премиум на 1 месяц\n"
-        "• 2 место: 500 рублей\n"
-        "• 3 место: Стикерпак\n\n"
+    await update.message.reply_text(
+        "🎁 Реферальный конкурс\n\n"
+        "🔹 1 друг = 1 балл\n"
+        "🔹 Очки сбрасываются 1 числа\n"
+        "🔹 Топ-3 получают призы\n\n"
         f"📌 Наши ресурсы:\n{VK_LINK}\n{TG_LINK}"
     )
-    await update.message.reply_text(info_text)
 
 def main():
     """Запуск бота"""
     try:
         conn = init_db()
         
-        # Создаем приложение с работающим JobQueue
-        app = (
-            ApplicationBuilder()
-            .token(BOT_TOKEN)
-            .job_queue(None)  # Важно: явная инициализация
-            .build()
-        )
+        # Создаем JobQueue отдельно
+        job_queue = JobQueue()
+        
+        # Инициализируем приложение
+        app = Application.builder().token(BOT_TOKEN).build()
+        
+        # Привязываем JobQueue к приложению
+        job_queue.set_application(app)
+        app.job_queue = job_queue
         
         app.bot_data['conn'] = conn
         
-        # Обработчики команд
+        # Обработчики
         app.add_handler(CommandHandler("start", start))
         app.add_handler(CommandHandler("me", show_stats))
         app.add_handler(CommandHandler("top", show_top))
         app.add_handler(CommandHandler("info", show_info))
-        
-        # Обработчик новых участников
         app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, send_welcome))
         
-        # Планировщик сброса очков (теперь точно работает)
-        app.job_queue.run_monthly(
+        # Планировщик
+        job_queue.run_monthly(
             reset_monthly_points,
-            time=time(hour=0, minute=5),  # В 00:05
+            time=time(hour=0, minute=5),
             day=1,
             context=app
         )
         
-        logger.info("Бот успешно запущен!")
+        logger.info("Бот запущен с работающим JobQueue")
         app.run_polling()
         
     except Exception as e:
